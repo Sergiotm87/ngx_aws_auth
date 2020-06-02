@@ -9,6 +9,12 @@ all:
 
 .PHONY: all clean test nginx
 
+sign:
+	$(CC) generate_signing_key.c generate_signing_key.h \
+	-lssl \
+	-lcrypto \
+	-o generate_signing_key.bin && \
+	./generate_signing_key.bin
 
 NGX_OBJS := $(shell find ${NGX_PATH}/objs -name \*.o)
 

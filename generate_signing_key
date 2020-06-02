@@ -51,7 +51,7 @@ if __name__ == "__main__":
     if args.no_base64:
         signature = signature.decode('latin_1')
     else:
-        signature = base64.b64encode(signature).decode('ascii')
+        signature = base64.b64encode(signature) #.decode('ascii')
 
     print(signature)
     print('%s/%s/%s/aws4_request' % (ymd, region, service))
