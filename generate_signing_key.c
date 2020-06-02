@@ -11,22 +11,22 @@
 #include <openssl/buffer.h>
 #include "generate_signing_key.h"
 
-
-int main() {
-
-    uint8_t *dateStamp = getDateUTC();
-
-    uint8_t *keyScope = getKeyScope(dateStamp, "eu-west-2", "s3");
-    uint8_t *signature = getSignatureKey("12345", dateStamp, "eu-west-2", "s3");
-
-    puts(keyScope);
-    puts(signature);
-
-    free(dateStamp);
-    free(keyScope);
-    free(signature);
-    return 0;
-}
+//
+//int main() {
+//
+//    uint8_t *dateStamp = getDateUTC();
+//
+//    uint8_t *keyScope = getKeyScope(dateStamp, "eu-west-2", "s3");
+//    uint8_t *signature = getSignatureKey("12345", dateStamp, "eu-west-2", "s3");
+//
+//    puts(keyScope);
+//    puts(signature);
+//
+//    free(dateStamp);
+//    free(keyScope);
+//    free(signature);
+//    return 0;
+//}
 
 /**
  * Function to get the UTC date string
