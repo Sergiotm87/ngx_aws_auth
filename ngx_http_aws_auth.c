@@ -21,16 +21,13 @@ typedef struct {
     ngx_str_t access_key;
     ngx_str_t key_scope;
     ngx_str_t secret_key;
+    ngx_str_t signing_key_decoded;
     ngx_str_t region;
     ngx_str_t service;
-    ngx_str_t signing_key;
-    ngx_str_t signing_key_decoded;
     ngx_str_t endpoint;
     ngx_str_t bucket_name;
     ngx_uint_t enabled;
 } ngx_http_aws_auth_conf_t;
-
-static void update_signing_key(ngx_http_aws_auth_conf_t *conf);
 
 
 static ngx_command_t ngx_http_aws_auth_commands[] = {
@@ -109,6 +106,10 @@ ngx_module_t ngx_http_aws_auth_module = {
         NGX_MODULE_V1_PADDING
 };
 
+static char *
+update_signing_key(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, time_t *timep);
+
+
 static void *
 ngx_http_aws_auth_create_loc_conf(ngx_conf_t *cf) {
     ngx_http_aws_auth_conf_t *conf;
@@ -125,29 +126,46 @@ ngx_http_aws_auth_create_loc_conf(ngx_conf_t *cf) {
     return conf;
 }
 
-static void update_signing_key(ngx_http_aws_auth_conf_t *conf) {
-    uint8_t *dateStamp = get_date_utc();
+static char *
+update_signing_key(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, time_t *timep) {
+    if (conf->key_scope.data == NULL) {
+        conf->key_scope.data = ngx_pcalloc(pool, 100);
+        if (conf->key_scope.data == NULL) {
+            return NGX_CONF_ERROR;
+        }
+    }
+
+    if (conf->signing_key_decoded.data == NULL) {
+        conf->signing_key_decoded.data = ngx_pcalloc(pool, 100);
+        if (conf->signing_key_decoded.data == NULL) {
+            return NGX_CONF_ERROR;
+        }
+    }
+
+    const ngx_str_t *dateStamp = ngx_aws_auth__compute_request_time(pool, timep);
 
     if (conf->key_scope.len == 0
-        || ngx_strncmp((char*) &conf->key_scope.data, (char*) dateStamp, 8)) {
+        || !!ngx_strncmp((char *) &conf->key_scope.data, (char *) &dateStamp->data, 8)) {
 
         // Update Key Scope
-        uint8_t* key_scope = get_key_scope(dateStamp, conf->region.data, conf->service.data);
+        uint8_t *key_scope = get_key_scope((uint8_t * ) & dateStamp->data, conf->region.data, conf->service.data);
         conf->key_scope.len = ngx_strlen(key_scope);
-        conf->key_scope.data = key_scope;
+        memcpy(conf->key_scope.data, key_scope, conf->key_scope.len);
+        free(key_scope);
 
         // Update Signature Key
-        uint8_t* signature_key = get_signature_key(
+        uint8_t *signature_key = get_signature_key(
                 conf->secret_key.data,
-                dateStamp,
+                (uint8_t * ) & dateStamp->data,
                 conf->region.data,
                 conf->service.data);
 
         conf->signing_key_decoded.len = ngx_strlen(signature_key);
-        conf->signing_key_decoded.data = signature_key;
+        memcpy(conf->signing_key_decoded.data, signature_key, conf->signing_key_decoded.len);
+        free(signature_key);
     }
 
-    free(dateStamp);
+    return NGX_CONF_OK;
 }
 
 static char *
@@ -159,8 +177,6 @@ ngx_http_aws_auth_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
     ngx_conf_merge_str_value(conf->secret_key, prev->secret_key, "");
     ngx_conf_merge_str_value(conf->region, prev->region, "");
     ngx_conf_merge_str_value(conf->service, prev->service, "s3");
-    ngx_conf_merge_str_value(conf->key_scope, prev->key_scope, "");
-    ngx_conf_merge_str_value(conf->signing_key, prev->signing_key, "");
     ngx_conf_merge_str_value(conf->endpoint, prev->endpoint, "s3.amazonaws.com");
     ngx_conf_merge_str_value(conf->bucket_name, prev->bucket_name, "");
 
@@ -168,9 +184,8 @@ ngx_http_aws_auth_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
         return NGX_CONF_ERROR;
     }
 
-    update_signing_key(conf);
-
-    return NGX_CONF_OK;
+    time_t rawtime;
+    return update_signing_key(cf->pool, conf, &rawtime);
 }
 
 static ngx_int_t
@@ -188,7 +203,7 @@ ngx_http_aws_proxy_sign(ngx_http_request_t *r) {
         return NGX_HTTP_NOT_ALLOWED;
     }
 
-    update_signing_key(conf);
+    update_signing_key(r->pool, conf, &r->start_sec);
 
     const ngx_array_t *headers_out = ngx_aws_auth__sign(
             r->pool, r,
@@ -237,12 +252,6 @@ ngx_http_aws_endpoint(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
 
 static char *
 ngx_http_aws_sign(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    /*
-    ngx_http_core_loc_conf_t  *clcf;
-
-    clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
-    clcf->handler = ngx_http_aws_proxy_sign;
-    */
     ngx_http_aws_auth_conf_t *mconf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_aws_auth_module);
     mconf->enabled = 1;
 
@@ -265,7 +274,3 @@ ngx_aws_auth_req_init(ngx_conf_t *cf) {
 
     return NGX_OK;
 }
-/*
- * vim: ts=4 sw=4 et
- */
-
