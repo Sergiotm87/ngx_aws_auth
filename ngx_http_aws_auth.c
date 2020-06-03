@@ -30,6 +30,8 @@ typedef struct {
     ngx_uint_t enabled;
 } ngx_http_aws_auth_conf_t;
 
+static void update_signing_key(ngx_http_aws_auth_conf_t *conf);
+
 
 static ngx_command_t ngx_http_aws_auth_commands[] = {
         {ngx_string("aws_access_key"),
@@ -46,18 +48,11 @@ static ngx_command_t ngx_http_aws_auth_commands[] = {
          offsetof(ngx_http_aws_auth_conf_t, secret_key),
          NULL},
 
-        {ngx_string("aws_key_scope"),
+        {ngx_string("aws_region"),
          NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
          ngx_conf_set_str_slot,
          NGX_HTTP_LOC_CONF_OFFSET,
-         offsetof(ngx_http_aws_auth_conf_t, key_scope),
-         NULL},
-
-        {ngx_string("aws_signing_key"),
-         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
-         ngx_conf_set_str_slot,
-         NGX_HTTP_LOC_CONF_OFFSET,
-         offsetof(ngx_http_aws_auth_conf_t, signing_key),
+         offsetof(ngx_http_aws_auth_conf_t, region),
          NULL},
 
         {ngx_string("aws_endpoint"),
@@ -121,6 +116,8 @@ ngx_http_aws_auth_create_loc_conf(ngx_conf_t *cf) {
     conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_aws_auth_conf_t));
     conf->enabled = 0;
     ngx_str_set(&conf->endpoint, "s3.amazonaws.com");
+    ngx_str_set(&conf->service, "s3");
+
     if (conf == NULL) {
         return NGX_CONF_ERROR;
     }
@@ -128,33 +125,30 @@ ngx_http_aws_auth_create_loc_conf(ngx_conf_t *cf) {
     return conf;
 }
 
-static void updateSigningKey() {
-    uint8_t *dateStamp = getDateUTC();
+static void update_signing_key(ngx_http_aws_auth_conf_t *conf) {
+    uint8_t *dateStamp = get_date_utc();
 
-    if (strncmp(conf->key_scope, dateStamp, 8) !== 0) {
-        conf->key_scope = getKeyScope(
+    if (conf->key_scope.len == 0
+        || ngx_strncmp((char*) &conf->key_scope.data, (char*) dateStamp, 8)) {
+
+        // Update Key Scope
+        uint8_t* key_scope = get_key_scope(dateStamp, conf->region.data, conf->service.data);
+        conf->key_scope.len = ngx_strlen(key_scope);
+        conf->key_scope.data = key_scope;
+
+        // Update Signature Key
+        uint8_t* signature_key = get_signature_key(
+                conf->secret_key.data,
                 dateStamp,
-                conf->region,
-                conf->service);
+                conf->region.data,
+                conf->service.data);
 
-        conf->signing_key = getSignatureKey(
-                conf->secret_key,
-                dateStamp,
-                conf->region,
-                conf->service);
+//        conf->signing_key.len = ngx_strlen(signature_key);
+//        conf->signing_key.data = signature_key;
+        conf->signing_key_decoded.len = ngx_strlen(signature_key);
+        conf->signing_key_decoded.data = signature_key;
 
-        if (conf->signing_key_decoded.data == NULL) {
-            conf->signing_key_decoded.data = ngx_pcalloc(cf->pool, 100);
-            if (conf->signing_key_decoded.data == NULL) {
-                return NGX_CONF_ERROR;
-            }
-        }
-
-        if (conf->signing_key.len > 64) {
-            return NGX_CONF_ERROR;
-        } else {
-            ngx_decode_base64(&conf->signing_key_decoded, &conf->signing_key);
-        }
+//        ngx_decode_base64(&conf->signing_key_decoded, &conf->signing_key);
     }
 
     free(dateStamp);
@@ -167,7 +161,7 @@ ngx_http_aws_auth_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
 
     ngx_conf_merge_str_value(conf->access_key, prev->access_key, "");
     ngx_conf_merge_str_value(conf->secret_key, prev->secret_key, "");
-    ngx_conf_merge_str_value(conf->region, prev->region, "eu-west-2");
+    ngx_conf_merge_str_value(conf->region, prev->region, "");
     ngx_conf_merge_str_value(conf->service, prev->service, "s3");
     ngx_conf_merge_str_value(conf->key_scope, prev->key_scope, "");
     ngx_conf_merge_str_value(conf->signing_key, prev->signing_key, "");
@@ -177,7 +171,14 @@ ngx_http_aws_auth_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
     if (conf->secret_key.len == 0) {
         return NGX_CONF_ERROR;
     } else {
-        updateSigningKey();
+//        if (conf->signing_key_decoded.data == NULL) {
+//            conf->signing_key_decoded.data = ngx_pcalloc(cf->pool, 100);
+//            if (conf->signing_key_decoded.data == NULL) {
+//                return NGX_CONF_ERROR;
+//            }
+//        }
+
+        update_signing_key(conf);
     }
 
     return NGX_CONF_OK;
@@ -198,7 +199,7 @@ ngx_http_aws_proxy_sign(ngx_http_request_t *r) {
         return NGX_HTTP_NOT_ALLOWED;
     }
 
-    updateSigningKey();
+    update_signing_key(conf);
 
     const ngx_array_t *headers_out = ngx_aws_auth__sign(
             r->pool, r,

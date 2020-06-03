@@ -11,83 +11,50 @@
 #include <openssl/buffer.h>
 #include "generate_signing_key.h"
 
-//
-//int main() {
-//
-//    uint8_t *dateStamp = getDateUTC();
-//
-//    uint8_t *keyScope = getKeyScope(dateStamp, "eu-west-2", "s3");
-//    uint8_t *signature = getSignatureKey("12345", dateStamp, "eu-west-2", "s3");
-//
-//    puts(keyScope);
-//    puts(signature);
-//
-//    free(dateStamp);
-//    free(keyScope);
-//    free(signature);
-//    return 0;
-//}
-
-/**
- * Function to get the UTC date string
- * @return - pointer to the string
- */
-uint8_t *getDateUTC() {
+uint8_t *get_date_utc() {
     time_t rawtime;
     struct tm *timeinfo;
-    uint8_t *buffer = (uint8_t *) malloc(9 * sizeof(uint8_t));
+    unsigned int len = 9;
+    uint8_t *buffer = (uint8_t *) malloc(len * sizeof(uint8_t));
 
     time(&rawtime);
     timeinfo = gmtime(&rawtime);
-    strftime(buffer, 9, "%Y%m%d", timeinfo);
+    strftime((char *)buffer, len, "%Y%m%d", timeinfo);
     return buffer;
 }
 
-/**
- * Generates the signing key for AWS4
- *
- * @param secretKey - AWS secret key
- * @param dateStamp - today's date in YYYYmmdd format
- * @param regionName - AWS e.g.
- * @param serviceName
- * @return
- */
-uint8_t *getSignatureKey(
+uint8_t *get_signature_key(
         uint8_t *secretKey,
         uint8_t *dateStamp,
         uint8_t *regionName,
         uint8_t *serviceName) {
 
-    uint8_t *buffer = (uint8_t *) malloc(strlen(secretKey) * sizeof(uint8_t) + 5);
-    sprintf(buffer, "AWS4%s", secretKey);
+    // extra byte for null char
+    size_t secretKeyLength = strlen((char *)secretKey) * sizeof(uint8_t) + 5;
+
+    uint8_t *buffer = (uint8_t *) malloc(secretKeyLength);
+
+    sprintf((char *) buffer, "AWS4%s", secretKey);
     uint8_t *kDate = sign(buffer, dateStamp);
     uint8_t *kRegion = sign(kDate, regionName);
     uint8_t *kService = sign(kRegion, serviceName);
-    uint8_t *kSigning = sign(kService, "aws4_request");
+    uint8_t *kSigning = sign(kService, (uint8_t *) "aws4_request");
 
-    size_t encodeLength = strlen(kSigning) * sizeof(uint8_t) * 3;
-    uint8_t *encodedSignature = (uint8_t *) malloc(encodeLength);
-    encode(kSigning, strlen(kSigning), &encodedSignature, &encodeLength);
-
+//    size_t encodeLength = strlen((char *) kSigning) * sizeof(uint8_t) * 3;
+//    uint8_t *encodedSignature = (uint8_t *) malloc(encodeLength);
+//    encode(kSigning, strlen((char *)  kSigning), &encodedSignature, &encodeLength);
 
     // Clean up
     free(kDate);
     free(kRegion);
     free(kService);
-    free(kSigning);
+//    free(kSigning);
 
-    return encodedSignature;
+//    return encodedSignature;
+    return kSigning;
 }
 
-/**
- * AWS Keyscope requires for AWS4 request signing
- *
- * @param dateStamp
- * @param region
- * @param service
- * @return
- */
-uint8_t *getKeyScope(
+uint8_t *get_key_scope(
         uint8_t *dateStamp,
         uint8_t *region,
         uint8_t *service) {
@@ -98,27 +65,19 @@ uint8_t *getKeyScope(
     time(&rawtime);
     timeinfo = gmtime(&rawtime);
 
-    int sigKeyLength = strlen(region) + strlen(service) + 16;
+    int sigKeyLength = strlen((char *) region) + strlen((char *) service) + 16;
     uint8_t *buffer = (uint8_t *) malloc(sigKeyLength * sizeof(uint8_t));
 
-    strftime(buffer, 9, "%Y%m%d", timeinfo);
-    sprintf(&buffer[8], "/%s/%s/aws4_request", region, service);
+    strftime((char *) buffer, 9, "%Y%m%d", timeinfo);
+    sprintf(&((char *) buffer)[8], "/%s/%s/aws4_request", region, service);
     return buffer;
 }
-
-/**
- * HMAC signing for AWS hash
- *
- * @param key
- * @param val
- * @return
- */
 
 uint8_t *sign(uint8_t *key, uint8_t *val) {
     uint8_t *hash = (uint8_t *) malloc(32 * sizeof(uint8_t));
 
-    int keyLength = strlen(key);
-    int msgLength = strlen(val);
+    int keyLength = strlen((char *) key);
+    int msgLength = strlen((char *) val);
 
     HMAC_CTX hmac;
     HMAC_CTX_init(&hmac);
@@ -131,14 +90,6 @@ uint8_t *sign(uint8_t *key, uint8_t *val) {
     return hash;
 }
 
-/**
- * Base64 encode
- *
- * @param in
- * @param in_len
- * @param out
- * @param out_len
- */
 void encode(const uint8_t *in, size_t in_len,
             uint8_t **out, size_t *out_len) {
     BIO *buff, *b64f;
@@ -162,15 +113,7 @@ void encode(const uint8_t *in, size_t in_len,
     BIO_free_all(buff);
 }
 
-/**
- * Base64 decode
- *
- * @param in
- * @param in_len
- * @param out
- * @param out_len
- */
-void decode(const char *in, size_t in_len,
+void decode(const uint8_t *in, size_t in_len,
             uint8_t **out, size_t *out_len) {
     BIO *buff, *b64f;
 

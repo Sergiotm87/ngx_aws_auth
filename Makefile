@@ -10,7 +10,7 @@ all:
 .PHONY: all clean test nginx
 
 sign:
-	$(CC) generate_signing_key.c generate_signing_key.h \
+	$(CC) generate_signing_key.c generate_signing_key.h test/gsk_test.c \
 	-lssl \
 	-lcrypto \
 	-o generate_signing_key.bin && \

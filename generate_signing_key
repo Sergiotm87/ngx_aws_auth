@@ -11,7 +11,7 @@ from datetime import datetime
 def sign(key, val):
     return hmac.new(key, val.encode('utf-8'), hashlib.sha256).digest()
 
-def getSignatureKey(key, dateStamp, regionName, serviceName):
+def get_signature_key(key, dateStamp, regionName, serviceName):
     kDate = sign(("AWS4" + key).encode("utf-8"), dateStamp)
     kRegion = sign(kDate, regionName)
     kService = sign(kRegion, serviceName)
@@ -46,7 +46,7 @@ if __name__ == "__main__":
             print('The auto-selected service is %s' % service,  file=sys.stderr)
 
     region = args.region
-    signature = getSignatureKey(args.secret_key, ymd, region, service)
+    signature = get_signature_key(args.secret_key, ymd, region, service)
 
     if args.no_base64:
         signature = signature.decode('latin_1')

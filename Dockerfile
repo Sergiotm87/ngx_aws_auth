@@ -7,17 +7,14 @@ RUN mkdir -p /tmp/src/${NGINX_VERSION}/ngx_aws_auth
 COPY . /tmp/src/${NGINX_VERSION}/ngx_aws_auth
 
 
-# RUN apk --update add openssl-dev git pcre-dev zlib-dev tini wget build-base python
-RUN apk --update add openssl-dev build-base
-
-
-# RUN apk --update add openssl-dev git pcre-dev zlib-dev tini wget build-base python && \
+RUN apk --update add openssl-dev git pcre-dev zlib-dev tini wget build-base
+#RUN apk --update add openssl-dev git pcre-dev zlib-dev tini wget build-base && \
 #     mkdir -p /tmp/src && \
 #     cd /tmp/src && \
 #     wget http://nginx.org/download/${NGINX_VERSION}.tar.gz && \
 #     tar -zxvf ${NGINX_VERSION}.tar.gz && \
 #     cd /tmp/src/${NGINX_VERSION} && \
-# #     git clone https://github.com/hexmarkrecords/ngx_aws_auth.git && \
+#      git clone https://github.com/hexmarkrecords/ngx_aws_auth.git && \
 #     ./configure \
 #         --with-http_ssl_module \
 #         --with-http_gzip_static_module \
@@ -26,13 +23,13 @@ RUN apk --update add openssl-dev build-base
 #         --http-log-path=/var/log/nginx/access.log \
 #         --error-log-path=/var/log/nginx/error.log \
 #         --sbin-path=/usr/local/sbin/nginx && \
-#     make && \
-#     make install
+#     make
 
 
 # Create app directory
 WORKDIR /tmp/src/${NGINX_VERSION}/ngx_aws_auth
 
+#RUN NGX_PATH=/tmp/src/${NGINX_VERSION} make sign
 RUN make sign
 
 CMD /tmp/src/${NGINX_VERSION}/ngx_aws_auth/generate_signing_key.bin
