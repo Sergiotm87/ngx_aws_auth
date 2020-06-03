@@ -1,11 +1,15 @@
-# AWS proxy module
+# Fork of AWS proxy module
 
 [![Build Status](https://travis-ci.org/anomalizer/ngx_aws_auth.svg?branch=master)](https://travis-ci.org/anomalizer/ngx_aws_auth)
  [![Gitter chat](https://badges.gitter.im/anomalizer/ngx_aws_auth.png)](https://gitter.im/ngx_aws_auth/Lobby?utm_source=share-link&utm_medium=link&utm_campaign=share-link)
 
+
+## WARNING: Not Expecting this to be merged to the main anomalizer/ngx_aws_auth branch. We have modded it to serve our use case and decided to share the ideas.
+
 This nginx module can proxy requests to authenticated S3 backends using Amazon's
 V4 authentication API. The first version of this module was written for the V2
 authentication protocol and can be found in the *AuthV2* branch.
+
 
 ## License
 This project uses the same license as ngnix does i.e. the 2 clause BSD / simplified BSD / FreeBSD license
@@ -19,8 +23,9 @@ Implements proxying of authenticated requests to S3.
     listen     8000;
 
     aws_access_key your_aws_access_key; # Example AKIDEXAMPLE
-    aws_key_scope scope_of_generated_signing_key; #Example 20150830/us-east-1/service/aws4_request
-    aws_signing_key signing_key_generated_using_script; #Example L4vRLWAO92X5L3Sqk5QydUSdB0nC9+1wfqLMOKLbRp4=
+    aws_secret_key your_aws_secret_key; #Example L4vRLWAO92X5L3Sqk5QydUSdB0nC9+1wfqLMOKLbRp4=
+    aws_region eu-west-2;
+    aws_service s3;
     aws_s3_bucket your_s3_bucket;
 
     location / {
@@ -35,8 +40,9 @@ Implements proxying of authenticated requests to S3.
       proxy_pass http://your_s3_bucket.s3.amazonaws.com/$1;
 
       aws_access_key your_aws_access_key;
-      aws_key_scope scope_of_generated_signing_key;
-      aws_signing_key signing_key_generated_using_script;
+      aws_secret_key your_aws_secret_key; #Example L4vRLWAO92X5L3Sqk5QydUSdB0nC9+1wfqLMOKLbRp4=
+      aws_region eu-west-2;
+      aws_service s3;
     }
 
     # This is an example that use specific s3 endpoint, default endpoint is s3.amazonaws.com
@@ -48,8 +54,9 @@ Implements proxying of authenticated requests to S3.
       aws_sign;
       aws_endpoint "s3.cn-north-1.amazonaws.com.cn";
       aws_access_key your_aws_access_key;
-      aws_key_scope scope_of_generated_signing_key;
-      aws_signing_key signing_key_generated_using_script;
+      aws_secret_key your_aws_secret_key; #Example L4vRLWAO92X5L3Sqk5QydUSdB0nC9+1wfqLMOKLbRp4=
+      aws_region eu-west-2;
+      aws_service s3;
     }
   }
 ```
@@ -59,7 +66,8 @@ The V4 protocol does not need access to the actual secret keys that one obtains
 from the IAM service. The correct way to use the IAM key is to actually generate
 a scoped signing key and use this signing key to access S3. This nginx module
 requires the signing key and not the actual secret key. It is an insecure practise
-to let the secret key reside on your nginx server.
+to let the secret key reside on your nginx server. (So true use this branch at
+your own risk!!!)
 
 Note that signing keys have a validity of just one week. Hence, they need to
 be refreshed constantly. Please useyour favourite configuration management
