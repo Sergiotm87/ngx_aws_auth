@@ -143,12 +143,8 @@ static void update_signing_key(ngx_http_aws_auth_conf_t *conf) {
                 conf->region.data,
                 conf->service.data);
 
-//        conf->signing_key.len = ngx_strlen(signature_key);
-//        conf->signing_key.data = signature_key;
         conf->signing_key_decoded.len = ngx_strlen(signature_key);
         conf->signing_key_decoded.data = signature_key;
-
-//        ngx_decode_base64(&conf->signing_key_decoded, &conf->signing_key);
     }
 
     free(dateStamp);
@@ -170,16 +166,9 @@ ngx_http_aws_auth_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
 
     if (conf->secret_key.len == 0) {
         return NGX_CONF_ERROR;
-    } else {
-//        if (conf->signing_key_decoded.data == NULL) {
-//            conf->signing_key_decoded.data = ngx_pcalloc(cf->pool, 100);
-//            if (conf->signing_key_decoded.data == NULL) {
-//                return NGX_CONF_ERROR;
-//            }
-//        }
-
-        update_signing_key(conf);
     }
+
+    update_signing_key(conf);
 
     return NGX_CONF_OK;
 }

@@ -40,17 +40,11 @@ uint8_t *get_signature_key(
     uint8_t *kService = sign(kRegion, serviceName);
     uint8_t *kSigning = sign(kService, (uint8_t *) "aws4_request");
 
-//    size_t encodeLength = strlen((char *) kSigning) * sizeof(uint8_t) * 3;
-//    uint8_t *encodedSignature = (uint8_t *) malloc(encodeLength);
-//    encode(kSigning, strlen((char *)  kSigning), &encodedSignature, &encodeLength);
-
     // Clean up
     free(kDate);
     free(kRegion);
     free(kService);
-//    free(kSigning);
 
-//    return encodedSignature;
     return kSigning;
 }
 
