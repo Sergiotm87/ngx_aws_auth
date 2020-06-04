@@ -1,5 +1,10 @@
 # Changelog
 
+## Version 2.2.0
+Simplified configuration to generate signing key
+when date changes at midnight to prevent request
+rejection from Amazon.
+
 ## Version 2.0.0
 Move to AWS V4 signatures
 
