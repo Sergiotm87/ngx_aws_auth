@@ -49,3 +49,18 @@ ngx_str_t* ngx_aws_auth__hash_sha256(ngx_pool_t *pool, const ngx_str_t *blob) {
 	ngx_hex_dump(retval->data, hash, sizeof(hash));
 	return retval;
 }
+
+uint8_t *ngx_aws_auth__sign_hmac(ngx_pool_t *pool, uint8_t *key, uint8_t *val) {
+    unsigned int len = EVP_MAX_MD_SIZE;
+
+    uint8_t *hash = ngx_pcalloc(pool, len * sizeof(uint8_t));
+
+    HMAC_CTX hmac;
+    HMAC_CTX_init(&hmac);
+    HMAC_Init(&hmac, key, strlen((char *) key), EVP_sha256());
+    HMAC_Update(&hmac, val, strlen((char *) val));
+    HMAC_Final(&hmac, hash, &len);
+    HMAC_CTX_cleanup(&hmac);
+
+    return hash;
+}

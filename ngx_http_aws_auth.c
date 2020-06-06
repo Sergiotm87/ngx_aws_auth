@@ -12,7 +12,6 @@
 
 #include "aws_functions.h"
 
-
 #define AWS_S3_VARIABLE "s3_auth_token"
 #define AWS_DATE_VARIABLE "aws_date"
 #define AWS_DATE_WIDTH 8
@@ -119,14 +118,8 @@ ngx_module_t ngx_http_aws_auth_module = {
 static void
 update_credentials(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, time_t *time_p);
 
-static uint8_t *
-sign(ngx_pool_t *pool, uint8_t *key, uint8_t *val);
-
 static void
-init_key_scope(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf);
-
-static void
-init_signing_key_decoded(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf);
+init_field(ngx_pool_t *pool, ngx_str_t *field);
 
 static void
 update_key_scope(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, uint8_t *dateStamp);
@@ -135,7 +128,7 @@ static void
 update_signing_key_decoded(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, uint8_t *dateStamp);
 
 static int
-is_signing_credentials_valid(ngx_http_aws_auth_conf_t *conf, const ngx_str_t *dateTimeStamp);
+is_signing_key_valid(ngx_http_aws_auth_conf_t *conf, const ngx_str_t *dateTimeStamp);
 
 
 static void *
@@ -156,26 +149,15 @@ ngx_http_aws_auth_create_loc_conf(ngx_conf_t *cf) {
 
 
 static void
-init_key_scope(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf)
-{
-    if (conf->key_scope.data == NULL) {
-        conf->key_scope.data = ngx_pcalloc(pool, 100);
+init_field(ngx_pool_t *pool, ngx_str_t *field) {
+    if (field->data == NULL) {
+        field->data = ngx_pcalloc(pool, 100);
     }
 }
 
 
 static void
-init_signing_key_decoded(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf)
-{
-    if (conf->signing_key_decoded.data == NULL) {
-        conf->signing_key_decoded.data = ngx_pcalloc(pool, 100);
-    }
-}
-
-
-static void
-update_key_scope(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, uint8_t *dateStamp)
-{
+update_key_scope(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, uint8_t *dateStamp) {
     // Update Key Scope
     int keyScopeLength = strlen((char *) conf->region.data) + strlen((char *) conf->service.data) + 16;
     uint8_t *keyScopeBuffer = ngx_pcalloc(pool, keyScopeLength * sizeof(uint8_t));
@@ -189,18 +171,17 @@ update_key_scope(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, uint8_t *date
 
 
 static void
-update_signing_key_decoded(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, uint8_t *dateStamp)
-{
+update_signing_key_decoded(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, uint8_t *dateStamp) {
     // Update Signature Key
     // extra byte for null char
     size_t signature_key_buffer_length = (strlen((char *) conf->secret_key.data) + 5) * sizeof(uint8_t);
     uint8_t *signature_key_buffer = ngx_pcalloc(pool, signature_key_buffer_length);
 
     sprintf((char *) signature_key_buffer, "AWS4%s", conf->secret_key.data);
-    uint8_t *kDate = sign(pool, signature_key_buffer, (uint8_t *) dateStamp);
-    uint8_t *kRegion = sign(pool, kDate, conf->region.data);
-    uint8_t *kService = sign(pool, kRegion, conf->service.data);
-    uint8_t *kSigning = sign(pool, kService, (uint8_t *) "aws4_request");
+    uint8_t *kDate = ngx_aws_auth__sign_hmac(pool, signature_key_buffer, (uint8_t *) dateStamp);
+    uint8_t *kRegion = ngx_aws_auth__sign_hmac(pool, kDate, conf->region.data);
+    uint8_t *kService = ngx_aws_auth__sign_hmac(pool, kRegion, conf->service.data);
+    uint8_t *kSigning = ngx_aws_auth__sign_hmac(pool, kService, (uint8_t *) "aws4_request");
 
     conf->signing_key_decoded.len = ngx_strlen(kSigning);
     ngx_memcpy(conf->signing_key_decoded.data, kSigning, conf->signing_key_decoded.len);
@@ -208,22 +189,24 @@ update_signing_key_decoded(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, uin
 
 
 static int
-is_signing_credentials_valid(ngx_http_aws_auth_conf_t *conf, const ngx_str_t *dateTimeStamp)
-{
-    return !(conf->key_scope.len == 0
-             || !!ngx_strncmp((char *) &conf->key_scope.data, (char *) &dateTimeStamp->data, AWS_DATE_WIDTH));
+is_signing_key_valid(ngx_http_aws_auth_conf_t *conf, const ngx_str_t *dateTimeStamp) {
+    return conf->key_scope.len != 0
+           && !ngx_strncmp(
+            (char *) &conf->key_scope.data,
+            (char *) &dateTimeStamp->data,
+            AWS_DATE_WIDTH
+    );
 }
 
 
 static void
-update_credentials(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, time_t *time_p)
-{
-    init_key_scope(pool, conf);
-    init_signing_key_decoded(pool, conf);
+update_credentials(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, time_t *time_p) {
+    init_field(pool, &conf->key_scope);
+    init_field(pool, &conf->signing_key_decoded);
 
     const ngx_str_t *dateTimeStamp = ngx_aws_auth__compute_request_time(pool, time_p);
 
-    if (!is_signing_credentials_valid(conf, (ngx_str_t *) dateTimeStamp)) {
+    if (!is_signing_key_valid(conf, (ngx_str_t *) dateTimeStamp)) {
 
         uint8_t *dateStamp = ngx_pcalloc(pool, (AWS_DATE_WIDTH + 1) * sizeof(uint8_t));
         ngx_memcpy(dateStamp, dateTimeStamp->data, AWS_DATE_WIDTH);
@@ -343,21 +326,4 @@ ngx_aws_auth_req_init(ngx_conf_t *cf) {
     *h = ngx_http_aws_proxy_sign;
 
     return NGX_OK;
-}
-
-
-static
-uint8_t *sign(ngx_pool_t *pool, uint8_t *key, uint8_t *val) {
-    unsigned int len = 64;
-
-    uint8_t *hash = ngx_pcalloc(pool, len * sizeof(uint8_t));
-
-    HMAC_CTX hmac;
-    HMAC_CTX_init(&hmac);
-    HMAC_Init(&hmac, key, strlen((char *) key), EVP_sha256());
-    HMAC_Update(&hmac, val, strlen((char *) val));
-    HMAC_Final(&hmac, hash, &len);
-    HMAC_CTX_cleanup(&hmac);
-
-    return hash;
 }

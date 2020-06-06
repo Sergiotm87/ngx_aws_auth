@@ -8,5 +8,6 @@
 
 ngx_str_t* ngx_aws_auth__hash_sha256(ngx_pool_t *pool, const ngx_str_t *blob);
 ngx_str_t* ngx_aws_auth__sign_sha256_hex(ngx_pool_t *pool, const ngx_str_t *blob, const ngx_str_t *signing_key);
+uint8_t* ngx_aws_auth__sign_hmac(ngx_pool_t *pool, uint8_t *key, uint8_t *val);
 
 #endif
