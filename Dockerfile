@@ -30,5 +30,8 @@ RUN NGX_PATH=/tmp/src/${NGINX_VERSION} && \
     cd /tmp/src/${NGINX_VERSION}/ngx_aws_auth/vendor && \
     git clone https://git.cryptomilk.org/projects/cmocka.git --branch=cmocka-1.1.5
 
+COPY ./tests /tmp/src/${NGINX_VERSION}/ngx_aws_auth/tests
+
+
 RUN cd /tmp/src/${NGINX_VERSION}/ngx_aws_auth && \
     NGX_PATH=/tmp/src/${NGINX_VERSION} make test-all

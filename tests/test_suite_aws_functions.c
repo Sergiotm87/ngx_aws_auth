@@ -289,6 +289,35 @@ static void basic_get_signature(void **state) {
     assert_string_equal(result.signature->data, "4ed4ec875ff02e55c7903339f4f24f8780b986a9cc9eff03f324d31da6a57690");
 }
 
+
+static void test_is_signing_key_valid__valid(void **state) {
+    ngx_http_aws_auth_conf_t conf;
+    ngx_str_t key_scope, dateString;
+    key_scope.data = "20200606/eu-west-2/s3/aws4_request";
+    key_scope.len = strlen(key_scope.data);
+    conf.key_scope = key_scope;
+
+    dateString.data = "20200606";
+    dateString.len = strlen(dateString.data);
+
+    assert_true(is_signing_key_valid(&conf, &dateString));
+}
+
+
+static void test_is_signing_key_valid__invalid(void **state) {
+    ngx_http_aws_auth_conf_t conf;
+    ngx_str_t key_scope, dateString;
+    key_scope.data = "20200606/eu-west-2/s3/aws4_request";
+    key_scope.len = strlen(key_scope.data);
+    conf.key_scope = key_scope;
+
+    dateString.data = "20200607";
+    dateString.len = strlen(dateString.data);
+
+    assert_false(is_signing_key_valid(&conf, &dateString));
+}
+
+
 int main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(null_test_success),
@@ -307,6 +336,9 @@ int main() {
             cmocka_unit_test(signed_headers),
             cmocka_unit_test(canonical_request_sans_qs),
             cmocka_unit_test(basic_get_signature),
+
+            cmocka_unit_test(test_is_signing_key_valid__valid),
+            cmocka_unit_test(test_is_signing_key_valid__invalid),
     };
 
     pool = ngx_create_pool(1000000, NULL);

@@ -1,4 +1,37 @@
-#include "ngx_http_aws_auth.h"
+#ifndef __NGX_HTTP_AWS_AUTH__H__
+#define __NGX_HTTP_AWS_AUTH__H__
+
+#include <ngx_config.h>
+#include <ngx_core.h>
+#include <ngx_http.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <openssl/evp.h>
+#include <openssl/hmac.h>
+#include <openssl/buffer.h>
+
+#include "aws_functions.h"
+
+#define AWS_S3_VARIABLE "s3_auth_token"
+#define AWS_DATE_VARIABLE "aws_date"
+
+static void
+*ngx_http_aws_auth_create_loc_conf(ngx_conf_t *cf);
+
+static char
+*ngx_http_aws_auth_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child);
+
+static
+ngx_int_t ngx_aws_auth_req_init(ngx_conf_t *cf);
+
+static char
+*ngx_http_aws_endpoint(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+
+static char
+*ngx_http_aws_sign(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_command_t ngx_http_aws_auth_commands[] = {
         {ngx_string("aws_access_key"),
@@ -93,76 +126,6 @@ ngx_http_aws_auth_create_loc_conf(ngx_conf_t *cf) {
     return conf;
 }
 
-
-static void
-init_field(ngx_pool_t *pool, ngx_str_t *field) {
-    if (field->data == NULL) {
-        field->data = ngx_pcalloc(pool, 100);
-    }
-}
-
-
-static void
-update_key_scope(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, uint8_t *dateStamp) {
-    // Update Key Scope
-    int keyScopeLength = strlen((char *) conf->region.data) + strlen((char *) conf->service.data) + 16;
-    uint8_t *keyScopeBuffer = ngx_pcalloc(pool, keyScopeLength * sizeof(uint8_t));
-
-    ngx_memcpy(keyScopeBuffer, dateStamp, AWS_DATE_WIDTH);
-    sprintf(&((char *) keyScopeBuffer)[AWS_DATE_WIDTH], "/%s/%s/aws4_request", conf->region.data, conf->service.data);
-
-    conf->key_scope.len = ngx_strlen(keyScopeBuffer);
-    ngx_memcpy(conf->key_scope.data, keyScopeBuffer, conf->key_scope.len);
-}
-
-
-static void
-update_signing_key_decoded(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, uint8_t *dateStamp) {
-    // Update Signature Key
-    // extra byte for null char
-    size_t signature_key_buffer_length = (strlen((char *) conf->secret_key.data) + 5) * sizeof(uint8_t);
-    uint8_t *signature_key_buffer = ngx_pcalloc(pool, signature_key_buffer_length);
-
-    sprintf((char *) signature_key_buffer, "AWS4%s", conf->secret_key.data);
-    uint8_t *kDate = ngx_aws_auth__sign_hmac(pool, signature_key_buffer, (uint8_t *) dateStamp);
-    uint8_t *kRegion = ngx_aws_auth__sign_hmac(pool, kDate, conf->region.data);
-    uint8_t *kService = ngx_aws_auth__sign_hmac(pool, kRegion, conf->service.data);
-    uint8_t *kSigning = ngx_aws_auth__sign_hmac(pool, kService, (uint8_t *) "aws4_request");
-
-    conf->signing_key_decoded.len = ngx_strlen(kSigning);
-    ngx_memcpy(conf->signing_key_decoded.data, kSigning, conf->signing_key_decoded.len);
-}
-
-
-static int
-is_signing_key_valid(ngx_http_aws_auth_conf_t *conf, const ngx_str_t *dateTimeStamp) {
-    return conf->key_scope.len != 0
-           && !ngx_strncmp(
-            (char *) &conf->key_scope.data,
-            (char *) &dateTimeStamp->data,
-            AWS_DATE_WIDTH
-    );
-}
-
-
-static void
-update_credentials(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, time_t *time_p) {
-    init_field(pool, &conf->key_scope);
-    init_field(pool, &conf->signing_key_decoded);
-
-    const ngx_str_t *dateTimeStamp = ngx_aws_auth__compute_request_time(pool, time_p);
-
-    if (!is_signing_key_valid(conf, (ngx_str_t *) dateTimeStamp)) {
-
-        uint8_t *dateStamp = ngx_pcalloc(pool, (AWS_DATE_WIDTH + 1) * sizeof(uint8_t));
-        ngx_memcpy(dateStamp, dateTimeStamp->data, AWS_DATE_WIDTH);
-
-        update_key_scope(pool, conf, dateStamp);
-        update_signing_key_decoded(pool, conf, dateStamp);
-    }
-}
-
-
 static char *
 ngx_http_aws_auth_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
     ngx_http_aws_auth_conf_t *prev = parent;
@@ -181,7 +144,7 @@ ngx_http_aws_auth_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
 
     time_t rawtime;
     time(&rawtime);
-    update_credentials(cf->pool, conf, &rawtime);
+    update_key_signature(cf->pool, conf, &rawtime);
 
     return NGX_CONF_OK;
 }
@@ -202,7 +165,7 @@ ngx_http_aws_proxy_sign(ngx_http_request_t *r) {
         return NGX_HTTP_NOT_ALLOWED;
     }
 
-    update_credentials(r->pool, conf, &r->start_sec);
+    update_key_signature(r->pool, conf, &r->start_sec);
 
     const ngx_array_t *headers_out = ngx_aws_auth__sign(
             r->pool, r,
@@ -273,3 +236,5 @@ ngx_aws_auth_req_init(ngx_conf_t *cf) {
 
     return NGX_OK;
 }
+
+#endif

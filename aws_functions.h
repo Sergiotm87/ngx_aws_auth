@@ -32,8 +32,22 @@
 
 #define AMZ_DATE_MAX_LEN 20
 #define STRING_TO_SIGN_LENGTH 3000
+#define AMZ_DATE_WIDTH 8
 
 typedef ngx_keyval_t header_pair_t;
+
+typedef struct {
+	ngx_str_t access_key;
+	ngx_str_t key_scope;
+	ngx_str_t secret_key;
+	ngx_str_t signing_key_decoded;
+	ngx_str_t region;
+	ngx_str_t service;
+	ngx_str_t endpoint;
+	ngx_str_t bucket_name;
+	ngx_uint_t enabled;
+} ngx_http_aws_auth_conf_t;
+
 
 struct AwsCanonicalRequestDetails {
 	ngx_str_t *canon_request;
@@ -437,6 +451,75 @@ static inline const ngx_array_t* ngx_aws_auth__sign(ngx_pool_t *pool, ngx_http_r
 	header_ptr->value = *auth_header_value;
 
 	return signature_details.header_list;
+}
+
+
+static inline void
+init_field(ngx_pool_t *pool, ngx_str_t *field) {
+	if (field->data == NULL) {
+		field->data = ngx_pcalloc(pool, 100);
+	}
+}
+
+
+static inline void
+update_key_scope(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, uint8_t *dateStamp) {
+	// Update Key Scope
+	int keyScopeLength = strlen((char *) conf->region.data) + strlen((char *) conf->service.data) + 16;
+	uint8_t *keyScopeBuffer = ngx_pcalloc(pool, keyScopeLength * sizeof(uint8_t));
+
+	ngx_memcpy(keyScopeBuffer, dateStamp, AMZ_DATE_WIDTH);
+	sprintf(&((char *) keyScopeBuffer)[AMZ_DATE_WIDTH], "/%s/%s/aws4_request", conf->region.data, conf->service.data);
+
+	conf->key_scope.len = ngx_strlen(keyScopeBuffer);
+	ngx_memcpy(conf->key_scope.data, keyScopeBuffer, conf->key_scope.len);
+}
+
+
+static inline void
+update_signing_key_decoded(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, uint8_t *dateStamp) {
+	// Update Signature Key
+	// extra byte for null char
+	size_t signature_key_buffer_length = (strlen((char *) conf->secret_key.data) + 5) * sizeof(uint8_t);
+	uint8_t *signature_key_buffer = ngx_pcalloc(pool, signature_key_buffer_length);
+
+	sprintf((char *) signature_key_buffer, "AWS4%s", conf->secret_key.data);
+	uint8_t *kDate = ngx_aws_auth__sign_hmac(pool, signature_key_buffer, (uint8_t *) dateStamp);
+	uint8_t *kRegion = ngx_aws_auth__sign_hmac(pool, kDate, conf->region.data);
+	uint8_t *kService = ngx_aws_auth__sign_hmac(pool, kRegion, conf->service.data);
+	uint8_t *kSigning = ngx_aws_auth__sign_hmac(pool, kService, (uint8_t *) "aws4_request");
+
+	conf->signing_key_decoded.len = ngx_strlen(kSigning);
+	ngx_memcpy(conf->signing_key_decoded.data, kSigning, conf->signing_key_decoded.len);
+}
+
+
+static inline int
+is_signing_key_valid(ngx_http_aws_auth_conf_t *conf, const ngx_str_t *dateTimeStamp) {
+	return conf->key_scope.len != 0
+		   && !ngx_strncmp(
+			(char *) conf->key_scope.data,
+			(char *) dateTimeStamp->data,
+			AMZ_DATE_WIDTH
+	);
+}
+
+
+static inline void
+update_key_signature(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, time_t *time_p) {
+	init_field(pool, &conf->key_scope);
+	init_field(pool, &conf->signing_key_decoded);
+
+	const ngx_str_t *dateTimeStamp = ngx_aws_auth__compute_request_time(pool, time_p);
+
+	if (!is_signing_key_valid(conf, (ngx_str_t *) dateTimeStamp)) {
+
+		uint8_t *dateStamp = ngx_pcalloc(pool, (AMZ_DATE_WIDTH + 1) * sizeof(uint8_t));
+		ngx_memcpy(dateStamp, dateTimeStamp->data, AMZ_DATE_WIDTH);
+
+		update_key_scope(pool, conf, dateStamp);
+		update_signing_key_decoded(pool, conf, dateStamp);
+	}
 }
 
 #endif
