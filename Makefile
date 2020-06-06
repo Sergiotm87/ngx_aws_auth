@@ -14,11 +14,19 @@ NGX_OBJS := $(shell find ${NGX_PATH}/objs -name \*.o)
 nginx:
 	cd ${NGX_PATH} && rm -rf ${NGX_PATH}/objs/src/core/nginx.o && make
 
-test: nginx
+test-base:
 	strip -N main -o ${NGX_PATH}/objs/src/core/nginx_without_main.o ${NGX_PATH}/objs/src/core/nginx.o \
 	&& mv ${NGX_PATH}/objs/src/core/nginx_without_main.o ${NGX_PATH}/objs/src/core/nginx.o \
-	&& $(CC) test_suite.c $(CFLAGS) -o test_suite -lcmocka ${NGX_OBJS} -ldl -lpthread -lcrypt -lssl -lpcre -lcrypto -lz \
+
+test-suite-aws-functions: nginx | test-base
+	$(CC) tests/test_suite_aws_functions.c $(CFLAGS) -o test_suite -lcmocka ${NGX_OBJS} -ldl -lpthread -lcrypt -lssl -lpcre -lcrypto -lz \
 	&& ./test_suite
+
+test-ngx-http-aws-auth: nginx | test-base
+	$(CC) tests/test_suite_ngx_http_aws_auth.c $(CFLAGS) -o test_suite -lcmocka ${NGX_OBJS} -ldl -lpthread -lcrypt -lssl -lpcre -lcrypto -lz \
+	&& ./test_suite
+
+test-all: test-suite-aws-functions | test-ngx-http-aws-auth
 
 clean:
 	rm -f *.o test_suite
