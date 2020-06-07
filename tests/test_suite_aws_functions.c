@@ -284,39 +284,139 @@ static void basic_get_signature(void **state) {
     ngx_decode_base64(&signing_key, &signing_key_b64e);
 
     struct AwsSignedRequestDetails result = ngx_aws_auth__compute_signature(pool, &request,
-                                                                            &signing_key, &key_scope, &bucket,
-                                                                            &endpoint);
+                                                                            &signing_key, &key_scope, &bucket,&endpoint);
     assert_string_equal(result.signature->data, "4ed4ec875ff02e55c7903339f4f24f8780b986a9cc9eff03f324d31da6a57690");
 }
 
 
 static void test_is_signing_key_valid__valid(void **state) {
     ngx_http_aws_auth_conf_t conf;
-    ngx_str_t key_scope, dateString;
-    key_scope.data = "20200606/eu-west-2/s3/aws4_request";
-    key_scope.len = strlen(key_scope.data);
+
+    ngx_str_t key_scope = ngx_string("20200606/eu-west-2/s3/aws4_request");
+    ngx_str_t date_stamp = ngx_string("20200606T063112Z");
+
     conf.key_scope = key_scope;
-
-    dateString.data = "20200606";
-    dateString.len = strlen(dateString.data);
-
-    assert_true(is_signing_key_valid(&conf, &dateString));
+    assert_true(is_signing_key_valid(&conf, &date_stamp));
 }
 
 
 static void test_is_signing_key_valid__invalid(void **state) {
     ngx_http_aws_auth_conf_t conf;
-    ngx_str_t key_scope, dateString;
-    key_scope.data = "20200606/eu-west-2/s3/aws4_request";
-    key_scope.len = strlen(key_scope.data);
+
+    ngx_str_t key_scope = ngx_string("20200606/eu-west-2/s3/aws4_request");
+    ngx_str_t date_stamp = ngx_string("20200607T063112Z");
+
     conf.key_scope = key_scope;
-
-    dateString.data = "20200607";
-    dateString.len = strlen(dateString.data);
-
-    assert_false(is_signing_key_valid(&conf, &dateString));
+    assert_false(is_signing_key_valid(&conf, &date_stamp));
 }
 
+
+static void test_update_key_scope(void **state) {
+    ngx_http_aws_auth_conf_t conf;
+
+    ngx_str_t region = ngx_string("eu-west-2");
+    ngx_str_t service = ngx_string("s3");
+
+    conf.region = region;
+    conf.service = service;
+    conf.key_scope.data = ngx_pcalloc(pool, 100);
+
+    update_key_scope(pool, &conf, (uint8_t *) "20200607T063112Z");
+
+    ngx_str_t result = ngx_string("20200607/eu-west-2/s3/aws4_request");
+
+    assert_ngx_string_equal(conf.key_scope, result);
+    assert_memory_equal(conf.key_scope.data, result.data, result.len);
+}
+
+
+static void test_update_signing_key_decoded(void **state) {
+    ngx_http_aws_auth_conf_t conf;
+
+    ngx_str_t region = ngx_string("eu-west-2");
+    ngx_str_t service = ngx_string("s3");
+    ngx_str_t secret_key = ngx_string("some_secret_key");
+
+    conf.region = region;
+    conf.service = service;
+    conf.secret_key = secret_key;
+    conf.signing_key_decoded.data = ngx_pcalloc(pool, 100);
+
+    update_signing_key_decoded(pool, &conf, (uint8_t *) "20200607T063112Z");
+
+    uint8_t result[EVP_MAX_MD_SIZE * 2];
+
+    ngx_hex_dump(result, conf.signing_key_decoded.data, EVP_MAX_MD_SIZE);
+
+    assert_memory_equal(&result, "848d3a0c90ec2f796610d7b4bdb803b5c8f52cd7aa504babf54a3f71841683b5", EVP_MAX_MD_SIZE);
+}
+
+
+static void test_update_key_signature__update_required(void **state) {
+    ngx_http_aws_auth_conf_t conf;
+
+    ngx_str_t region = ngx_string("eu-west-2");
+    ngx_str_t service = ngx_string("s3");
+    ngx_str_t secret_key = ngx_string("some_secret_key");
+    ngx_str_t key_scope = ngx_string("20200606/eu-west-2/s3/aws4_request");
+
+    conf.region = region;
+    conf.service = service;
+    conf.secret_key = secret_key;
+    conf.key_scope = key_scope;
+
+    conf.key_scope.data = ngx_pcalloc(pool, 100);
+    conf.signing_key_decoded.data = ngx_pcalloc(pool, 100);
+
+    // 2020-06-07
+    time_t raw_time = 1591537608;
+
+    update_key_signature(pool, &conf, &raw_time);
+
+    uint8_t *expected = "20200607/eu-west-2/s3/aws4_request";
+    assert_memory_equal(conf.key_scope.data,
+                        expected, ngx_strlen(expected));
+
+    uint8_t result[EVP_MAX_MD_SIZE * 2];
+    ngx_hex_dump(result, conf.signing_key_decoded.data, EVP_MAX_MD_SIZE);
+
+    assert_memory_equal(&result,
+                        "faf1e5d553327d15ca3953a60f1a6162ebf77f6c14e7075405c60ac94947461d",
+                        EVP_MAX_MD_SIZE);
+}
+
+static void test_update_key_signature__update_not_required(void **state) {
+    ngx_http_aws_auth_conf_t conf;
+
+    ngx_str_t region = ngx_string("eu-west-2");
+    ngx_str_t service = ngx_string("s3");
+    ngx_str_t secret_key = ngx_string("some_secret_key");
+    ngx_str_t key_scope = ngx_string("20200607/eu-west-2/s3/aws4_request");
+
+    conf.region = region;
+    conf.service = service;
+    conf.secret_key = secret_key;
+    conf.key_scope = key_scope;
+
+    conf.key_scope.data = ngx_pcalloc(pool, 100);
+    conf.signing_key_decoded.data = ngx_pcalloc(pool, 100);
+
+    // 2020-06-06
+    time_t raw_time = 1591434000;
+
+    update_key_signature(pool, &conf, &raw_time);
+
+    uint8_t *expected = "20200606/eu-west-2/s3/aws4_request";
+    assert_memory_equal(conf.key_scope.data,
+                        expected, ngx_strlen(expected));
+
+    uint8_t result[EVP_MAX_MD_SIZE * 2];
+    ngx_hex_dump(result, conf.signing_key_decoded.data, EVP_MAX_MD_SIZE);
+
+    assert_memory_equal(&result,
+                        "b5e6b853ac7de6cb1f29ac909cff85cf428be5e780ab6fc397927df029651943",
+                        EVP_MAX_MD_SIZE);
+}
 
 int main() {
     const struct CMUnitTest tests[] = {
@@ -339,6 +439,10 @@ int main() {
 
             cmocka_unit_test(test_is_signing_key_valid__valid),
             cmocka_unit_test(test_is_signing_key_valid__invalid),
+            cmocka_unit_test(test_update_key_scope),
+            cmocka_unit_test(test_update_signing_key_decoded),
+            cmocka_unit_test(test_update_key_signature__update_required),
+            cmocka_unit_test(test_update_key_signature__update_not_required),
     };
 
     pool = ngx_create_pool(1000000, NULL);

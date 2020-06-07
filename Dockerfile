@@ -14,7 +14,7 @@ RUN apk --update add openssl-dev git pcre-dev zlib-dev tini wget build-base cmak
 #      git clone https://github.com/hexmarkrecords/ngx_aws_auth.git && \
      ./configure \
          --with-http_ssl_module \
-         --with-http_gzip_static_module \
+#         --with-http_gzip_static_module \
          --add-module=ngx_aws_auth \
          --prefix=/etc/nginx \
          --http-log-path=/var/log/nginx/access.log \
