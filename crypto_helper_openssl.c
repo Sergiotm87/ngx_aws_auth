@@ -57,8 +57,8 @@ uint8_t *ngx_aws_auth__sign_hmac(ngx_pool_t *pool, uint8_t *key, uint8_t *val) {
 
     HMAC_CTX hmac;
     HMAC_CTX_init(&hmac);
-    HMAC_Init(&hmac, key, strlen((char *) key), EVP_sha256());
-    HMAC_Update(&hmac, val, strlen((char *) val));
+    HMAC_Init(&hmac, key, ngx_strlen((char *) key), EVP_sha256());
+    HMAC_Update(&hmac, val, ngx_strlen((char *) val));
     HMAC_Final(&hmac, hash, &len);
     HMAC_CTX_cleanup(&hmac);
 

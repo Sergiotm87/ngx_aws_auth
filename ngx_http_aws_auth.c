@@ -1,6 +1,3 @@
-#ifndef __NGX_HTTP_AWS_AUTH__H__
-#define __NGX_HTTP_AWS_AUTH__H__
-
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -236,5 +233,3 @@ ngx_aws_auth_req_init(ngx_conf_t *cf) {
 
     return NGX_OK;
 }
-
-#endif
