@@ -496,18 +496,17 @@ update_key_scope(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, uint8_t *date
 
 static inline void
 update_signing_key_decoded(ngx_pool_t *pool, ngx_http_aws_auth_conf_t *conf, uint8_t *dateStamp) {
-    // Update Signature Key
-    // extra byte for null char
-    size_t signature_key_buffer_length = (ngx_strlen((char *) conf->secret_key.data) + 5) * sizeof(uint8_t);
-    uint8_t *signature_key_buffer = ngx_pcalloc(pool, signature_key_buffer_length);
+
+    uint8_t *signature_key_buffer = ngx_pcalloc(pool, EVP_MAX_MD_SIZE * sizeof(uint8_t));
 
     sprintf((char *) signature_key_buffer, "AWS4%s", conf->secret_key.data);
-    uint8_t *kDate = ngx_aws_auth__sign_hmac(pool, signature_key_buffer, (uint8_t *) dateStamp);
-    uint8_t *kRegion = ngx_aws_auth__sign_hmac(pool, kDate, conf->region.data);
-    uint8_t *kService = ngx_aws_auth__sign_hmac(pool, kRegion, conf->service.data);
-    uint8_t *kSigning = ngx_aws_auth__sign_hmac(pool, kService, (uint8_t *) "aws4_request");
 
-    conf->signing_key_decoded.len = ngx_strlen(kSigning);
+    uint8_t *kDate = ngx_aws_auth__sign_hmac(pool, signature_key_buffer, ngx_strlen(signature_key_buffer), (uint8_t *) dateStamp);
+    uint8_t *kRegion = ngx_aws_auth__sign_hmac(pool, kDate, EVP_MAX_MD_SIZE, conf->region.data);
+    uint8_t *kService = ngx_aws_auth__sign_hmac(pool, kRegion, EVP_MAX_MD_SIZE, conf->service.data);
+    uint8_t *kSigning = ngx_aws_auth__sign_hmac(pool, kService, EVP_MAX_MD_SIZE, (uint8_t *) "aws4_request");
+
+    conf->signing_key_decoded.len = EVP_MAX_MD_SIZE;
     ngx_memcpy(conf->signing_key_decoded.data, kSigning, conf->signing_key_decoded.len);
 }
 
