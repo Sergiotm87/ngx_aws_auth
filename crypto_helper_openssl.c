@@ -7,13 +7,14 @@
  * releases.
  */
 
+#include "crypto_helper.h"
+
 #include <openssl/bio.h>
 #include <openssl/buffer.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
 
-#include "crypto_helper.h"
 
 static const EVP_MD* evp_md = NULL;
 
@@ -55,12 +56,12 @@ uint8_t *ngx_aws_auth__sign_hmac(ngx_pool_t *pool, uint8_t *key, int key_length,
 
     uint8_t *hash = ngx_pcalloc(pool, EVP_MAX_MD_SIZE * sizeof(uint8_t));
 
-    HMAC_CTX hmac;
-    HMAC_CTX_init(&hmac);
-    HMAC_Init(&hmac, key, key_length, EVP_sha256());
-    HMAC_Update(&hmac, val, ngx_strlen((char *) val));
-    HMAC_Final(&hmac, hash, &len);
-    HMAC_CTX_cleanup(&hmac);
+    HMAC_CTX *hmac = HMAC_CTX_new();
+    HMAC_CTX_reset(hmac);
+    HMAC_Init_ex(hmac, key, key_length, EVP_sha256(), NULL);
+    HMAC_Update(hmac, val, ngx_strlen((char *) val));
+    HMAC_Final(hmac, hash, &len);
+    HMAC_CTX_free(hmac);
 
     return hash;
 }

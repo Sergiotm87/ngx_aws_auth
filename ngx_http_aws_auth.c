@@ -124,6 +124,7 @@ ngx_http_aws_auth_create_loc_conf(ngx_conf_t *cf) {
     ngx_str_set(&conf->service, "s3");
 
     if (conf == NULL) {
+        ngx_log_error(NGX_LOG_EMERG, cf->log, 0, "Error in ngx_aws_auth configuration");
         return NGX_CONF_ERROR;
     }
 
@@ -135,21 +136,44 @@ ngx_http_aws_auth_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
     ngx_http_aws_auth_conf_t *prev = parent;
     ngx_http_aws_auth_conf_t *conf = child;
 
-    ngx_conf_merge_str_value(conf->access_key, prev->access_key, "");
-    ngx_conf_merge_str_value(conf->secret_key, prev->secret_key, "");
-    ngx_conf_merge_str_value(conf->region, prev->region, "");
-    ngx_conf_merge_str_value(conf->service, prev->service, "s3");
-    ngx_conf_merge_str_value(conf->endpoint, prev->endpoint, "s3.amazonaws.com");
-    ngx_conf_merge_str_value(conf->bucket_name, prev->bucket_name, "");
 
-    if (conf->secret_key.len == 0) {
-        return NGX_CONF_ERROR;
+    if (conf->enabled) {
+        ngx_conf_merge_str_value(conf->access_key, prev->access_key, "");
+        ngx_conf_merge_str_value(conf->secret_key, prev->secret_key, "");
+        ngx_conf_merge_str_value(conf->region, prev->region, "");
+        ngx_conf_merge_str_value(conf->service, prev->service, "s3");
+        ngx_conf_merge_str_value(conf->endpoint, prev->endpoint, "s3.amazonaws.com");
+        ngx_conf_merge_str_value(conf->bucket_name, prev->bucket_name, "");
+
+        ngx_uint_t config_invalid = 0;
+        if (conf->access_key.len == 0) {
+            ngx_log_error(NGX_LOG_EMERG, cf->log, 0, "Error aws_access_key key missing");
+            config_invalid = 1;
+        }
+
+        if (conf->region.len == 0) {
+            ngx_log_error(NGX_LOG_EMERG, cf->log, 0, "Error aws_region missing");
+            config_invalid = 1;
+        }
+
+        if (conf->bucket_name.len == 0) {
+            ngx_log_error(NGX_LOG_EMERG, cf->log, 0, "Error aws_s3_bucket missing");
+            config_invalid = 1;
+        }
+
+        if (conf->secret_key.len == 0) {
+            ngx_log_error(NGX_LOG_EMERG, cf->log, 0, "Error aws_secret_key missing");
+            config_invalid = 1;
+        }
+
+        if (config_invalid) {
+            return NGX_CONF_ERROR;
+        }
+
+        time_t rawtime;
+        time(&rawtime);
+        update_key_signature(cf->pool, conf, &rawtime);
     }
-
-    time_t rawtime;
-    time(&rawtime);
-    update_key_signature(cf->pool, conf, &rawtime);
-
     return NGX_CONF_OK;
 }
 
@@ -233,6 +257,7 @@ ngx_aws_auth_req_init(ngx_conf_t *cf) {
 
     h = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
     if (h == NULL) {
+        ngx_log_error(NGX_LOG_EMERG, cf->log, 0, "Missing NGX HTTP ACCESS PHASE handlers");
         return NGX_ERROR;
     }
 

@@ -6,6 +6,10 @@
 
 ## WARNING: Not Expecting this to be merged to the main anomalizer/ngx_aws_auth branch. We have modded it to serve our use case and decided to share the ideas.
 
+This module is based on Open SSL 1.1.1. So works with nginx 1.19.1.
+
+Tested with nginx 1.19.1.
+
 This nginx module can proxy requests to authenticated S3 backends using Amazon's
 V4 authentication API. The first version of this module was written for the V2
 authentication protocol and can be found in the *AuthV2* branch.

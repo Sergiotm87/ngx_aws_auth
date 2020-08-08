@@ -1,6 +1,10 @@
 version: '3'
 services:
 
-  nginx-s3-proxy:
+  ngx_aws_auth_builder:
     build:
       context: .
+      args:
+        WITH_UNIT_TEST: "false"
+    volumes:
+      - /private/tmp:/tmp
